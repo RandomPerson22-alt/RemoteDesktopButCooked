@@ -1,0 +1,52 @@
+apply plugin: 'application'
+
+java.sourceCompatibility = 17
+java.targetCompatibility = 17
+
+if (JavaVersion.current().isJava9Compatible()) {
+    compileJava.options.release.set(17)
+}
+
+application {
+    mainClass = 'com.randomperson22.rdbc.server.ServerLauncher'
+    applicationName = appName
+}
+
+eclipse.project.name = appName + '-server'
+
+dependencies {
+    implementation "org.java-websocket:Java-WebSocket:1.6.0"
+    implementation project(':core')
+}
+
+tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = 'Builds a fat JAR with all dependencies ONLY DOES FOR SERVER'
+
+    archiveFileName.set('server.jar')
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    manifest {
+        attributes(
+            'Main-Class': application.mainClass,
+            'Enable-Native-Access': 'ALL-UNNAMED',
+            'Multi-Release': 'true'
+        )
+    }
+
+    from sourceSets.main.output
+
+    dependsOn configurations.runtimeClasspath
+
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+
+    exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
+}
+
+// Docker-friendly alias
+tasks.register('dist') {
+    dependsOn tasks.named('fatJar')
+}
