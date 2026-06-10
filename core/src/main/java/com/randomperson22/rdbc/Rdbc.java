@@ -5,44 +5,35 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
 import javax.imageio.ImageIO;
-import java.awt.Dimension;
-import java.awt.Rectangle;
-import java.awt.Robot;
-import java.awt.Toolkit;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
-import com.google.gson.Gson;
-import com.randomperson22.rdbc.net.Packets;
 
 public class Rdbc extends ApplicationAdapter {
 
     private WebSocketClient client;
-
     private Robot robot;
-    private Rectangle screenRect;
-    private final Gson gson = new Gson();
+    private Rectangle rect;
 
     @Override
     public void create() {
 
-        System.out.println("Desktop started 🚀");
+        System.out.println("Desktop started");
 
         try {
-
             robot = new Robot();
 
-            Dimension size =
-                    Toolkit.getDefaultToolkit().getScreenSize();
+            Dimension size = Toolkit.getDefaultToolkit().getScreenSize();
 
-            screenRect = new Rectangle(size);
-
-            System.out.println(
-                    "Capturing screen: "
-                            + size.width
-                            + "x"
-                            + size.height
+            rect = new Rectangle(
+                    0,
+                    0,
+                    1280,
+                    720
             );
+
+            System.out.println("Capture size: 1280x720");
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -62,35 +53,18 @@ public class Rdbc extends ApplicationAdapter {
 
                 @Override
                 public void onOpen(ServerHandshake handshake) {
-
-                    System.out.println("[WS] Connected!");
-
-                    Packets.MetaPacket meta =
-                            new Packets.MetaPacket(
-                                    screenRect.width,
-                                    screenRect.height
-                            );
-
-                    client.send(gson.toJson(meta));
-
-                    System.out.println(
-                            "Sent metadata: "
-                                    + screenRect.width
-                                    + "x"
-                                    + screenRect.height
-                    );
-
-                    startCaptureLoop();
+                    System.out.println("WS connected");
+                    startLoop();
                 }
 
                 @Override
                 public void onMessage(String message) {
-                    System.out.println("[WS] Text: " + message);
+                    System.out.println("WS text: " + message);
                 }
 
                 @Override
                 public void onClose(int code, String reason, boolean remote) {
-                    System.out.println("[WS] Closed: " + reason);
+                    System.out.println("WS closed: " + code + " " + reason);
                 }
 
                 @Override
@@ -106,9 +80,9 @@ public class Rdbc extends ApplicationAdapter {
         }
     }
 
-    private void startCaptureLoop() {
+    private void startLoop() {
 
-        Thread thread = new Thread(() -> {
+        Thread t = new Thread(() -> {
 
             while (true) {
 
@@ -119,29 +93,19 @@ public class Rdbc extends ApplicationAdapter {
                         continue;
                     }
 
-                    BufferedImage screenshot =
-                            robot.createScreenCapture(screenRect);
+                    BufferedImage img =
+                            robot.createScreenCapture(rect);
 
                     ByteArrayOutputStream baos =
                             new ByteArrayOutputStream();
 
-                    ImageIO.write(
-                            screenshot,
-                            "jpg",
-                            baos
-                    );
+                    ImageIO.write(img, "jpg", baos);
 
-                    byte[] frame = baos.toByteArray();
+                    byte[] data = baos.toByteArray();
 
-                    System.out.println(
-                            "Sending frame: "
-                                    + (frame.length / 1024)
-                                    + " KB"
-                    );
+                    client.send(data);
 
-                    client.send(frame);
-
-                    Thread.sleep(200); // 5 FPS
+                    Thread.sleep(100); // ~10 FPS
 
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -149,15 +113,12 @@ public class Rdbc extends ApplicationAdapter {
             }
         });
 
-        thread.setDaemon(true);
-        thread.start();
+        t.setDaemon(false);
+        t.start();
     }
 
     @Override
     public void dispose() {
-
-        if (client != null) {
-            client.close();
-        }
+        if (client != null) client.close();
     }
 }

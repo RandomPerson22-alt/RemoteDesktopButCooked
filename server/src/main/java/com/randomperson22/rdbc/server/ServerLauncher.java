@@ -50,9 +50,7 @@ public class ServerLauncher {
             @Override
             public void onMessage(WebSocket conn, ByteBuffer message) {
 
-                int size = message.remaining();
-
-                byte[] data = new byte[size];
+                byte[] data = new byte[message.remaining()];
                 message.get(data);
 
                 for (WebSocket client : getConnections()) {
@@ -60,14 +58,6 @@ public class ServerLauncher {
                         client.send(data);
                     }
                 }
-
-                status.newLine(
-                        "📦 Binary message received (" +
-                                size +
-                                " bytes), forwarded to " +
-                                Math.max(0, getConnections().size() - 1) +
-                                " clients"
-                );
             }
 
             @Override

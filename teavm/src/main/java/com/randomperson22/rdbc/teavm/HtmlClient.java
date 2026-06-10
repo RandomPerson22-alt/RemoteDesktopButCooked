@@ -2,30 +2,29 @@ package com.randomperson22.rdbc.teavm;
 
 import org.teavm.jso.browser.Window;
 import org.teavm.jso.dom.events.MessageEvent;
-import org.teavm.jso.dom.html.HTMLDocument;
-import org.teavm.jso.dom.html.HTMLImageElement;
+import org.teavm.jso.dom.html.*;
 import org.teavm.jso.typedarrays.ArrayBuffer;
-import org.teavm.jso.typedarrays.Uint8Array;
 import org.teavm.jso.websocket.WebSocket;
-
-import java.util.Base64;
+import org.teavm.jso.typedarrays.Uint8Array;
+import org.teavm.jso.JSBody;
 
 public class HtmlClient {
 
     private WebSocket socket;
     private HTMLImageElement img;
 
-    private int remoteWidth;
-    private int remoteHeight;
-
     public void connect() {
 
         HTMLDocument doc = Window.current().getDocument();
 
+        doc.getBody().getStyle().setProperty("margin", "0");
+        doc.getBody().getStyle().setProperty("overflow", "hidden");
+
         img = doc.createElement("img").cast();
 
         img.getStyle().setProperty("width", "100%");
-        img.getStyle().setProperty("height", "auto");
+        img.getStyle().setProperty("height", "100%");
+        img.getStyle().setProperty("object-fit", "contain");
 
         doc.getBody().appendChild(img);
 
@@ -35,125 +34,40 @@ public class HtmlClient {
 
         socket.setBinaryType("arraybuffer");
 
-        socket.addEventListener("open", evt -> {
-            System.out.println("🌐 Viewer connected");
-        });
+        socket.addEventListener("message", (MessageEvent evt) -> {
 
-        socket.addEventListener("message", evt -> {
+            Object data = evt.getData();
 
-            Object data =
-                    ((MessageEvent) evt).getData();
+            if (data instanceof ArrayBuffer buffer) {
 
-            if (data instanceof String) {
+                Uint8Array arr =
+                        Uint8Array.create(buffer);
 
-                handlePacket((String)data);
-
-            }
-            else if (data instanceof ArrayBuffer) {
-
-                render((ArrayBuffer)data);
-
-            }
-            else if (data instanceof Uint8Array) {
-
-                render(
-                        ((Uint8Array)data).getBuffer()
-                );
-
-            }
-            else {
-
-                System.out.println(
-                        "Unknown WS type: "
-                                + data
-                );
+                render(buffer);
             }
         });
     }
 
-    private void handlePacket(String json) {
-
-        System.out.println(
-                "Received packet: "
-                        + json
-        );
-
-        if(json.contains("\"type\":\"meta\"")) {
-
-            remoteWidth =
-                    extractInt(json, "width");
-
-            remoteHeight =
-                    extractInt(json, "height");
-
-            System.out.println(
-                    "Remote screen: "
-                            + remoteWidth
-                            + "x"
-                            + remoteHeight
-            );
-        }
-    }
-
-    private int extractInt(
-            String json,
-            String key
-    ) {
-
-        String search =
-                "\"" + key + "\":";
-
-        int start =
-                json.indexOf(search);
-
-        if(start == -1)
-            return 0;
-
-        start += search.length();
-
-        int end = start;
-
-        while(end < json.length()
-                && Character.isDigit(
-                json.charAt(end)
-        )) {
-
-            end++;
-        }
-
-        return Integer.parseInt(
-                json.substring(start, end)
-        );
-    }
+    @JSBody(params = "bytes", script =
+            "let binary = '';" +
+                    "for (let i = 0; i < bytes.length; i++) {" +
+                    "  binary += String.fromCharCode(bytes[i] & 0xff);" +
+                    "}" +
+                    "return btoa(binary);")
+    private static native String toBase64(byte[] bytes);
 
     private void render(ArrayBuffer buffer) {
 
-        Uint8Array bytes =
-                Uint8Array.create(buffer);
+        Uint8Array bytes = Uint8Array.create(buffer);
 
-        String base64 =
-                toBase64(bytes);
+        byte[] arr = new byte[bytes.getLength()];
 
-        img.setSrc(
-                "data:image/jpeg;base64,"
-                        + base64
-        );
-    }
-
-    private String toBase64(
-            Uint8Array bytes
-    ) {
-
-        byte[] arr =
-                new byte[bytes.getLength()];
-
-        for(int i = 0; i < arr.length; i++) {
-
-            arr[i] =
-                    (byte)bytes.get(i);
+        for (int i = 0; i < arr.length; i++) {
+            arr[i] = (byte) bytes.get(i);
         }
 
-        return Base64.getEncoder()
-                .encodeToString(arr);
+        String base64 = toBase64(arr);
+
+        img.setSrc("data:image/jpeg;base64," + base64);
     }
 }
