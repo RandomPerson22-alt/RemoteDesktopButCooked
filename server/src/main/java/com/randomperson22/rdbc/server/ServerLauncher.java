@@ -6,72 +6,72 @@ import org.java_websocket.server.WebSocketServer;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ServerLauncher {
 
+    private static final AtomicReference<byte[]> latestFrame = new AtomicReference<>();
+
     public static void main(String[] args) {
 
-        String portEnv = System.getenv("PORT");
-        StatusLineManager status = new StatusLineManager();
+        int port = 8080;
 
-        int port;
-        try {
-            port = (portEnv != null) ? Integer.parseInt(portEnv) : 8080;
-        } catch (Exception e) {
-            port = 8080;
-        }
-
-        WebSocketServer server = new WebSocketServer(
-                new InetSocketAddress("0.0.0.0", port)) {
+        WebSocketServer server = new WebSocketServer(new InetSocketAddress(port)) {
 
             @Override
             public void onStart() {
-                status.newLine("🚀 Server started on port: " + getPort());
+                System.out.println("Server started on " + port);
+
+                // broadcaster thread
+                new Thread(() -> {
+                    while (true) {
+                        try {
+                            byte[] frame = latestFrame.getAndSet(null);
+
+                            if (frame != null) {
+                                for (WebSocket c : getConnections()) {
+                                    if (c.isOpen()) {
+                                        c.send(frame);
+                                    }
+                                }
+                            }
+
+                            Thread.sleep(15);
+
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }).start();
             }
 
             @Override
             public void onOpen(WebSocket conn, ClientHandshake handshake) {
-                status.newLine("🔌 Connected: " + conn.getRemoteSocketAddress());
-            }
-
-            @Override
-            public void onMessage(WebSocket conn, String message) {
-
-                status.newLine("📩 Text: " + message);
-
-                for (WebSocket client : getConnections()) {
-
-                    if (client != conn && client.isOpen()) {
-                        client.send(message);
-                    }
-                }
+                System.out.println("Client: " + conn.getRemoteSocketAddress());
             }
 
             @Override
             public void onMessage(WebSocket conn, ByteBuffer message) {
-
                 byte[] data = new byte[message.remaining()];
                 message.get(data);
 
-                for (WebSocket client : getConnections()) {
-                    if (client != conn && client.isOpen()) {
-                        client.send(data);
-                    }
-                }
+                // overwrite old frame (prevents backlog explosion)
+                latestFrame.set(data);
             }
+
+            @Override public void onMessage(WebSocket conn, String message) {}
 
             @Override
             public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-                status.newLine("❌ Disconnected: " + reason);
+                System.out.println("Closed: " + reason);
             }
 
             @Override
             public void onError(WebSocket conn, Exception ex) {
-                status.newLine("💥 Error: " + ex.getMessage());
+                ex.printStackTrace();
             }
         };
 
         server.start();
-        System.out.println("🟢 Booting...");
     }
 }

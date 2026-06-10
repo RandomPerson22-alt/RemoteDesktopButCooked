@@ -1,52 +1,40 @@
 package com.randomperson22.rdbc;
 
-import com.badlogic.gdx.ApplicationAdapter;
+import com.badlogic.gdx.ApplicationListener;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
-import javax.imageio.ImageIO;
+import javax.imageio.*;
+import javax.imageio.stream.ImageOutputStream;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
+import java.io.*;
 import java.net.URI;
+import java.util.Iterator;
 
-public class Rdbc extends ApplicationAdapter {
+public class Rdbc implements ApplicationListener {
 
     private WebSocketClient client;
     private Robot robot;
     private Rectangle rect;
 
-    @Override
-    public void create() {
+    private volatile boolean running = true;
 
-        System.out.println("Desktop started");
-
+    public void start() {
         try {
             robot = new Robot();
 
-            Dimension size = Toolkit.getDefaultToolkit().getScreenSize();
+            rect = new Rectangle(0, 0, 1280, 720);
 
-            rect = new Rectangle(
-                    0,
-                    0,
-                    1280,
-                    720
-            );
-
-            System.out.println("Capture size: 1280x720");
+            connect();
 
         } catch (Exception e) {
             e.printStackTrace();
-            return;
         }
-
-        connect();
     }
 
     private void connect() {
-
         try {
-
             client = new WebSocketClient(
                     new URI("wss://remotedesktopbutcooked-1.onrender.com")
             ) {
@@ -57,18 +45,11 @@ public class Rdbc extends ApplicationAdapter {
                     startLoop();
                 }
 
-                @Override
-                public void onMessage(String message) {
-                    System.out.println("WS text: " + message);
+                @Override public void onMessage(String message) {}
+                @Override public void onClose(int code, String reason, boolean remote) {
+                    System.out.println("Closed: " + reason);
                 }
-
-                @Override
-                public void onClose(int code, String reason, boolean remote) {
-                    System.out.println("WS closed: " + code + " " + reason);
-                }
-
-                @Override
-                public void onError(Exception ex) {
+                @Override public void onError(Exception ex) {
                     ex.printStackTrace();
                 }
             };
@@ -80,32 +61,47 @@ public class Rdbc extends ApplicationAdapter {
         }
     }
 
+    private byte[] encodeJpeg(BufferedImage img, float quality) throws IOException {
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
+        ImageWriter writer = writers.next();
+
+        ImageWriteParam param = writer.getDefaultWriteParam();
+        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+        param.setCompressionQuality(quality);
+
+        ImageOutputStream ios = ImageIO.createImageOutputStream(baos);
+        writer.setOutput(ios);
+
+        writer.write(null, new IIOImage(img, null, null), param);
+
+        ios.close();
+        writer.dispose();
+
+        return baos.toByteArray();
+    }
+
     private void startLoop() {
 
         Thread t = new Thread(() -> {
 
-            while (true) {
-
+            while (running) {
                 try {
 
                     if (client == null || !client.isOpen()) {
-                        Thread.sleep(1000);
+                        Thread.sleep(300);
                         continue;
                     }
 
-                    BufferedImage img =
-                            robot.createScreenCapture(rect);
+                    BufferedImage frame = robot.createScreenCapture(rect);
 
-                    ByteArrayOutputStream baos =
-                            new ByteArrayOutputStream();
-
-                    ImageIO.write(img, "jpg", baos);
-
-                    byte[] data = baos.toByteArray();
+                    byte[] data = encodeJpeg(frame, 0.55f);
 
                     client.send(data);
 
-                    Thread.sleep(100); // ~10 FPS
+                    Thread.sleep(66); // ~15 FPS sweet spot
 
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -113,12 +109,37 @@ public class Rdbc extends ApplicationAdapter {
             }
         });
 
-        t.setDaemon(false);
+        t.setDaemon(true);
         t.start();
     }
 
     @Override
+    public void create() {
+
+    }
+
+    @Override
+    public void resize(int i, int i1) {
+
+    }
+
+    @Override
+    public void render() {
+
+    }
+
+    @Override
+    public void pause() {
+
+    }
+
+    @Override
+    public void resume() {
+
+    }
+
+    @Override
     public void dispose() {
-        if (client != null) client.close();
+
     }
 }
